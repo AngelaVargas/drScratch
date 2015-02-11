@@ -1,0 +1,16 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+
+whenClicked	When This Sprite Clicked
+whenCloned	When I Start as a Clone
+whenGreenFlag	When Green Flag Clicked
+whenIReceive	When I Receive ()
+whenKeyPressed	When () Key Pressed
+whenSceneStarts	When Backdrop Switches to ()
+whenSensorGreaterThan	When () is greater than ()
+
+def translateBlockSelector(block):
+	"""Return the selctor for scratchblocks2"""
+	return selector
+

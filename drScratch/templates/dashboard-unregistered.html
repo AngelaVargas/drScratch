@@ -73,6 +73,8 @@
 
                   <div class="col-xs-6">
                     <p class="announcement-heading">CT Score: {{ mastery.scoring}}/21</p>
+                    <a class="twitter-share-button" href="https://twitter.com/share">Tweet</a>
+                    <p>asdsak</p>
                   </div>
                 </div>
               </div>
@@ -255,8 +257,10 @@
     <script src="resources/jsDashboard/tablesorter/jquery.tablesorter.js"></script>
     <script src="resources/jsDashboard/tablesorter/tables.js"></script>
 
-
-    
+    <script>
+      window.twttr=(function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],t=window.twttr||{};if(d.getElementById(id))return;js=d.createElement(s);js.id=id;js.src="https://platform.twitter.com/widgets.js";fjs.parentNode.insertBefore(js,fjs);t._e=[];t.ready=function(f){t._e.push(f);};return t;}(document,"script","twitter-wjs"));
+    </script>
+      
 
   </body>
 </html>

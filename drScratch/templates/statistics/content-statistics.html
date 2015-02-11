@@ -1,0 +1,64 @@
+{% extends "dashboard.html"%}        
+
+{% block content %}
+
+        <div class="row">
+          <div class="col-lg-12">
+            <h1>Dashboard <small>Overview</small></h1>
+            <ol class="breadcrumb">
+              <li class="active"><i class="fa fa-dashboard"></i> Dashboard</li>
+            </ol>
+            <div class="alert alert-success alert-dismissable">
+              <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+              Statics of your project!
+            </div>
+          </div>
+        </div><!-- /.row -->
+
+        <div id="donut-example"></div>
+        <div id="area-example"></div>
+
+
+
+{% endblock %}
+
+
+{% block dataJavaScript%}
+
+<script type="text/javascript">
+Morris.Donut({
+  element: 'donut-example',
+  data: [
+    {label: "Beginner", value: {{ beginner|length }}},
+    {label: "Developer", value: {{ developer|length }}},
+    {label: "Advanced", value: {{ advanced|length }}}
+  ]
+}); 
+
+Morris.Area({
+  element: 'area-example',
+  data: [
+    { y: '2012-01-20', a: 100, b: 90 },
+    { y: '2012-01-21', a: 75,  b: 65 },
+    { y: '2012-01-22', a: 50,  b: 40 },
+    { y: '2012-01-23', a: 75,  b: 65 },
+    { y: '2012-01-24', a: 50,  b: 40 },
+    { y: '2012-02-01', a: 75,  b: 65 },
+    { y: '2012-02-02', a: 100, b: 90 }
+  ],
+  xkey: 'y',
+  ykeys: ['a', 'b'],
+  labels: ['Analyzed Projects', 'Points']
+});
+
+
+
+
+
+
+
+
+
+</script>
+
+{% endblock%}

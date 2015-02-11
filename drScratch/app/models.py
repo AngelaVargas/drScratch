@@ -2,6 +2,23 @@ from django.db import models
 
 # Models of drScratch
 
+class AnonProject(models.Model):
+	identifier = models.IntegerField()	
+	date = models.DateField()
+	points = models.IntegerField()
+	level = models.TextField()
+
+class AnonMastery(models.Model):
+	myproject = models.ForeignKey(AnonProject)
+	abstraction = models.IntegerField()
+	paralel = models.IntegerField()
+	logic = models.IntegerField()
+	synchronization = models.IntegerField()
+	flowcontrol = models.IntegerField()
+	interactivity = models.IntegerField()
+	representation = models.IntegerField()
+	scoring = models.IntegerField()	
+
 class File(models.Model):
     filename = models.CharField(max_length=100)
 
@@ -12,7 +29,7 @@ class Dashboard(models.Model):
 class Project(models.Model):
 	name = models.TextField()
 	version = models.IntegerField()
-	score = models.IntegerField()
+	points = models.IntegerField()
 	level = models.TextField()
 	path = models.TextField()
 	fupdate = models.TextField()
@@ -49,7 +66,7 @@ class Mastery(models.Model):
 	flowcontrol = models.IntegerField()
 	interactivity = models.IntegerField()
 	representation = models.IntegerField()
-	scoring = models.IntegerField()	
+	points = models.IntegerField()	
 
 class Comment(models.Model):
 	user = models.TextField()

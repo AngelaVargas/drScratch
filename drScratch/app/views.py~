@@ -7,10 +7,11 @@ from django.core.cache import cache
 from django.shortcuts import render_to_response
 from django.template import RequestContext as RC
 from django.contrib.auth import logout, login, authenticate
+from django.contrib.auth.models import User
+from app.models import AnonProject, AnonMastery
 from app.models import Project, Dashboard, Attribute
 from app.models import Dead, Sprite, Mastery, Duplicate, File
-from app.forms import UploadFileForm, UserForm, NewUserForm, UrlForm
-from django.contrib.auth.models import User
+from app.forms import UserForm, NewUserForm, UrlForm
 from datetime import datetime, date
 import requests
 import os
@@ -18,6 +19,15 @@ import ast
 import json
 import sys
 import urllib2
+import csv
+import json
+
+# Global variables
+pMastery = "hairball -p mastery.Mastery "
+pDuplicateScript = "hairball -p duplicate.DuplicateScripts " 
+pSpriteNaming = "hairball -p convention.SpriteNaming "
+pDeadCode = "hairball -p blocks.DeadCode "
+pInitialization = "hairball -p initialization.AttributeInitialization "
 
 #_______________________ MAIN _______________________________#
 
@@ -78,6 +88,35 @@ def createUser(request):
 			passUser = form.cleaned_data['passUser']
 			user = User.objects.create_user(nickName, emailUser, passUser)
 			return render_to_response("profile.html", {'user': user}, context_instance=RC(request))
+
+#_________________________CSV File____________________________#
+def exportCsvFile(request):
+	"""Export a CSV File"""
+	response = HttpResponse(content_type='text/csv')
+	response['Content-Disposition'] = 'attachment; filename="some.csv"'
+	d = {"Abstraction": 2, "level": " Developing", "Parallelization": 1, "Logic": 1, "Synchronization": 2, "FlowControl": 2, "UserInteractivity": 1, "maxPoints": 21, "DataRepresentation": 1, "points": 10}
+	writer = csv.writer(response)
+	for key, value in d.items():
+   		writer.writerow([key, value])
+
+	"""
+	writer = csv.writer(response)
+	writer.writerow(['First row', 'Paco', '21', 'Madrid'])
+	writer.writerow(['Second row', 'Lucia', '25', 'Quito'])
+	"""
+	return response
+
+
+
+#_________________________Drawing Blocks____________________________#
+
+
+def drawBlocks(request):
+	code = 'when backdrop switches to (%s)' + '\n' + 'go to x:(%s) y:(%s)' + '\n' + 'wait (%s) secs' + '\n' + 'show' + '\n' + 'glide (%s) secs to x:(%s) y:(%s)'
+	return render_to_response("drawBlocks/drawBlocks.html", {'code': code})
+
+
+
 
 #________________________ PROFILE ____________________________# 
 
@@ -149,13 +188,13 @@ def myProjects(request):
         user = request.user.username
         mydashboard = Dashboard.objects.get(user=user)
         projects = mydashboard.project_set.all()
-        return render_to_response("myProjects/content-projects.html", 
-                                {'projects': projects},
+        return render_to_response("myProjects/content-myprojects.html", 
+                                {'projects': projects,
+								'user': user},
                                 context_instance=RC(request))
     else:
         return HttpResponseRedirect("/")
     
-
 def myRoles(request):
     """Show the roles in Doctor Scratch"""
     if request.user.is_authenticated():
@@ -259,25 +298,99 @@ def handle_uploaded_file(file, fileSaved, counter):
 
 #_______________________URL Analysis Project_________________________________#
 
-
 def processFormURL(request):
-	"""Process Request of form URL"""		
+	"""Process Request of form URL"""
+	if request.user.is_authenticated():
+		user = request.user.username
+	else:
+		user = None
 	if request.method == "POST":
 		form = UrlForm(request.POST)
 		if form.is_valid():
+			d = {}
+			flagsPlugin = {"Mastery":0, "DeadCode":0, "SpriteNaming":1, "Initialization":0, "DuplicateScripts":0}
 			url = form.cleaned_data['urlProject']
 			idProjectScratch = processStringUrl(url)
 			if idProjectScratch == 'error':
 				return HttpResponse('la url es incorrecta')
 			else:
 				fileName = sendRequestgetSB2(idProjectScratch)
-				print 'hola mundo!!!'
-				print fileName
-				pathProject = '/home/test/github-desarrollo/drScratch/drScratch/repo/' + fileName	
+				pathProject = '/home/test/github-des-titua/drScratch/drScratch/repo/' + fileName
 				dicMetrics = analyzeProject(pathProject)
-				print dicMetrics
-				# Redirect to dashboard for unregistered user
-				return render_to_response("upload/dashboard-unregistered.html", dicMetrics)				
+				if user == None:
+					#updateDataBaseProject(idProjectScratch, dicMetrics)
+					group = None
+					dPlugins = buildDictPlugins2(flagsPlugin, 1, pathProject)
+					d = buildDictResponse(dPlugins, int(idProjectScratch), group)
+					buildJsonResponse(d)
+					# Redirect to dashboard for unregistered user
+					return render_to_response("upload/dashboard-unregistered.html", dicMetrics)
+				else:
+					updateProjectAuthUser(user, idProjectScratch, dicMetrics)
+					# authenticated user
+					return render_to_response("myprojects/content-projects.html", dicMetrics)
+
+def buildDictPlugins(flags, allFlag, pathProject):
+	"""Build dict with plugins in function flags"""
+	ldict = []
+	d = {}
+	cond = allFlag
+	allFlag = 0
+	for key, value in flags.items():
+		if (value or cond):
+			print key + ' = ' + str(value)
+			if ((key == "Mastery") or allFlag):
+				dPlugin = pluginMasteryJson(pathProject)
+			elif ((key == "DeadCode") or allFlag):
+				dPlugin = pluginDeadCodeJson(pathProject)
+			elif ((key == "SpriteNaming") or allFlag):
+				dPlugin = pluginSpriteNamingJson(pathProject)
+			elif ((key == "Initialization") or allFlag):
+				dPlugin = pluginInitializationJson(pathProject)
+			elif ((key == "DuplicateScripts") or allFlag):
+				dPlugin = pluginDuplicateJson(pathProject)
+			ldict.append(dPlugin.copy())
+	d["plugins"] = ldict
+	return d
+
+def buildDictPlugins2(flags, allFlag, pathProject):
+	"""Build dict with plugins in function flags"""
+	dic = {}
+	d = {}
+	cond = allFlag
+	allFlag = 0
+	for key, value in flags.items():
+		if (value or cond):
+			if ((key == "Mastery") or allFlag):
+				d.update(pluginMasteryJson(pathProject))
+			elif ((key == "DeadCode") or allFlag):
+				d.update(pluginDeadCodeJson(pathProject))
+			elif ((key == "SpriteNaming") or allFlag):
+				d.update(pluginSpriteNamingJson(pathProject))
+			elif ((key == "Initialization") or allFlag):
+				d.update(pluginInitializationJson(pathProject))
+			elif ((key == "DuplicateScripts") or allFlag):
+				d.update(pluginDuplicateJson(pathProject))
+	dic["plugins"] = d
+	return dic
+
+def buildDictResponse(dPlugins, idProject, group):
+	"""Build response Json"""
+	d = {}
+	date = str(datetime.now())
+	dMastery = dPlugins["plugins"]["Mastery"]
+	points = dMastery["points"]
+	level = dMastery["level"]
+	dinfo = {"version":1.0, "url":"drscratch.programamos.es"}	
+	dproject = {"idProject":idProject, "group":group, "date":date, "points":points, "level":level}
+	d["info"] = dinfo
+	d["project"] = dproject
+	d.update(dPlugins)
+	return d
+
+def buildJsonResponse(dic):
+	json_data = json.dumps(dic)
+	return json_data
 				
 def processStringUrl(url):
 	"""Process String of URL from Form"""
@@ -314,6 +427,166 @@ def sendRequestgetSB2(idProject):
 	return nameFile
 
 
+#_________________________ API  ___________________________#
+
+def apiProject(request, idProject):
+	"""Return json with metrics for project"""
+	flagsPlugin = {"Mastery":0, "DeadCode":0, "SpriteNaming":0, "Initialization":0, "DuplicateScripts":0}
+	fileName = sendRequestgetSB2(idProject)
+	pathProject = '/home/test/github-des-titua/drScratch/drScratch/repo/' + fileName
+	dPlugins = buildDictPlugins2(flagsPlugin, 1, pathProject)
+	group = "Miclase"
+	d = buildDictResponse(dPlugins, int(idProject), group)
+	jsonMetrics = buildJsonResponse(d)
+	print jsonMetrics
+	return HttpResponse(jsonMetrics, content_type='application/json')
+
+def ajaxDogs(request):
+	d = {"Mastery":{"flowcontrol":1, "logic":2}, "DeadCode":{"blocks":32}}
+	jresponse = json.dumps(d)
+    # convert the list to JSON
+    return HttpResponse(jresponse, mimetype='application/json')
+
+def apiSetProject(request, teacher, group):
+	"""Return set of projects in function group"""
+	
+
+
+#________________________JSON Response_______________________________________#
+
+
+def responseMetricsJSON(request):
+	"""Return the response in JSON format"""
+	dic = pluginInitializationJson(fname)
+	return 'hola'
+
+
+def responseJson(request):
+	"""Return the Json"""
+	data = {'baz': 'goo', 'foo': 'bar'}
+	json_data = json.dumps(data)
+
+def pluginMasteryJson(fname):
+	"""Return dic with Mastery plugin"""
+	result = pluginResult(pMastery, fname)
+	d = procMastery(result)
+	return d
+
+def pluginInitializationJson(fname):
+	"""Return dict with plugin Initialization"""
+	result = pluginResult(pInitialization, fname)
+	d = procInitialization(result)
+	return d
+
+def pluginSpriteNamingJson(fname):
+	"""Return dict with SpriteNaming plugin"""
+	result = pluginResult(pSpriteNaming, fname)
+	d = procSpriteNaming(result)
+	return d
+
+def pluginDeadCodeJson(fname):
+	"""Return dict with DeadCode plugin"""
+	result = pluginResult(pDeadCode, fname)
+	d = procDeadCode(result)
+	return d
+
+def pluginDuplicateJson(fname):
+	"""Return dict with Duplicate Scripts"""
+	result = pluginResult(pDuplicateScript, fname)
+	d = procDuplicateScript(result)
+	return d
+
+def pluginResult(plugin, fname):
+	try:
+		callHairball = plugin + fname
+		result = os.popen(callHairball).read()
+		return result
+	except:
+		print "IO Exception: execute os popen"	
+		return "Error"
+
+
+#_________________________STATITICS GRAPHS__________________________________#
+
+def showStatisticsDr(request):
+	"""Show the statics of projects"""
+	allProjects = AnonProject.objects.all()
+
+	#AnonProject.objects.filter(date__year=2015)
+	begin_projects = AnonProject.objects.filter(level='beginner')
+	dev_projects = AnonProject.objects.filter(level='developing')
+	adv_projects = AnonProject.objects.filter(level='advanced')
+	return render_to_response("statistics/content-statistics.html", 
+                                {'projects': allProjects,
+								'beginner': begin_projects,
+								'developer': dev_projects,
+								'advanced': adv_projects})
+
+def getQueryAllProjects():
+	"""Get a query for all analyzed projects"""
+	allProjects = AnonProject.objects.all()	
+
+def updateDataBaseProject(idProject, dicMetrics):
+	"""Update in Data Base the metrics of project for anonymous"""
+	dateUpdate = datetime.now()
+	# Save the project
+	aProject = AnonProject(identifier=int(idProject), date=dateUpdate, points=0, level="beginner")
+	aProject.save()
+	# Save the metrics    
+	dmaster = dicMetrics["mastery"]
+	aMastery = AnonMastery(myproject=aProject, abstraction=dmaster["Abstraction"], paralel=dmaster["Parallelization"], logic=dmaster["Logic"], synchronization=dmaster["Synchronization"], flowcontrol=dmaster["FlowControl"], interactivity=dmaster["UserInteractivity"], representation=dmaster["DataRepresentation"], scoring=dmaster["points"])
+	aMastery.save()
+	pointsProj = dmaster["points"]
+	aProject.points = pointsProj
+	aProject.level = levelProject(pointsProj)
+	aProject.save()
+
+def levelProject(points):
+	"""Return the level of project in function of points"""
+	level = ""
+	if points > 15:	#CONST change
+		level = "advanced"
+	elif points > 7: #CONST change
+		level = "developing"
+	else:
+		level = "beginner"
+	return level
+
+
+def updateProjectAuthUser(user, idProject, dictMetrics):
+	"""Update the project in the data of user"""
+	fupdate = datetime.now()
+	# Get the dashboard of user
+	myDashboard = Dashboard.objects.get(user=user)    
+	# Save the project
+	newProject = Project(name='AnalyzedByUrl', version=1, points=0, path='AnalyzedByUrl', fupdate=fupdate, dashboard=myDashboard)
+	newProject.save()
+	# Save the metrics    
+	dmaster = dictMetrics["mastery"]
+	newMastery = Mastery(myproject=newProject, abstraction=dmaster["Abstraction"], paralel=dmaster["Parallelization"], logic=dmaster["Logic"], synchronization=dmaster["Synchronization"], flowcontrol=dmaster["FlowControl"], interactivity=dmaster["UserInteractivity"], representation=dmaster["DataRepresentation"], points=dmaster["points"])
+	newMastery.save()
+	newProject.points = dmaster["points"]
+	newProject.level = levelProject(dmaster["points"])    
+	newProject.save()      
+	for charx, dmetric in dictMetrics["attribute"].items():
+		if charx != 'stage':
+			newAttribute = Attribute(myproject=newProject, character=charx, orientation=dmetric["orientation"], position=dmetric["position"], costume=dmetric["costume"], visibility=dmetric["visibility"], size=dmetric["size"])
+			newAttribute.save()
+	iterator = 0
+	for deadx in dictMetrics["dead"]:
+		if (iterator % 2) == 0:
+			newDead = Dead(myproject=newProject, character=deadx, blocks=0)
+		else:
+			newDead.blocks = deadx
+		newDead.save()
+		iterator += 1
+
+	newDuplicate = Duplicate(myproject=newProject, numduplicates=dictMetrics["duplicate"][0])
+	newDuplicate.save()
+	for charx in d["sprite"]:
+		newSprite = Sprite(myproject=newProject, character=charx)
+		newSprite.save()
+
 
 #_______________________ AUTOMATIC ANALYSIS _________________________________#
 
@@ -339,7 +612,6 @@ def analyzeProject(file_name):
 		resultSpriteNaming = os.popen(metricSpriteNaming).read()
 		resultDeadCode = os.popen(metricDeadCode).read()
 		resultInitialization = os.popen(metricInitialization).read()
-		print resultInitialization
 		#Plug-ins not used yet
 		#resultBlockCounts = os.popen(metricBlockCounts).read()
 		#resultBroadcastReceive = os.popen(metricBroadcastReceive).read()
@@ -361,111 +633,148 @@ def analyzeProject(file_name):
 # __________________________ PROCESSORS _____________________________#
 
 def procMastery(lines):
-    """Mastery"""
-    dic = {}
-    lLines = lines.split('\n')
-    d = ast.literal_eval(lLines[1])
-    lLines = lLines[2].split(':')[1]
-    points = int(lLines.split('/')[0])
-    maxi = int(lLines.split('/')[1])
-    dic["mastery"] = d
-    dic["mastery"]["points"] = points
-    dic["mastery"]["maxi"] = maxi
-    return dic
+	"""Processor plugin Mastery"""
+	dic = {}
+	lLines = lines.split('\n')
+	d = ast.literal_eval(lLines[1])
+	level = lLines[4].split(':')[1]
+	lLines = lLines[2].split(':')[1]
+	points = int(lLines.split('/')[0])
+	maxPoints = int(lLines.split('/')[1])
+	d["points"] = points
+	d["maxPoints"] = maxPoints
+	d["level"] = level
+	dic["Mastery"] = d
+	return dic
 
 def procDuplicateScript(lines):
-    """Return number of duplicate scripts"""
-    dic = {}
-    number = 0
-    lLines = lines.split('\n')
-    if len(lLines) > 2:
-        number = lLines[1][0]
-    dic["duplicateScript"] = dic
-    dic["duplicateScript"]["number"] = number
-    return dic
-
-
+	"""Return number of duplicate scripts"""
+	dic = {}
+	d = {}
+	dFinal = {}
+	sec = []
+	total = 0
+	i = 0
+	blocks = []
+	lLines = lines.split('\n')
+	if len(lLines) > 2:
+		total = lLines[1][0]
+		blocks = lLines[2:]
+		blocks = blocks[:-2]
+		dic["total"] = total
+		for block in blocks:
+			idDic = "strBlock" + str(i)
+			sec.append(idDic)
+			i += 1
+		d = dict(zip(sec, blocks))
+		dic["blocks"] = d
+		dFinal["DuplicateScripts"] = dic
+	else:
+		# no duplicate scripts
+		dic["total"] = total #0
+		dic["blocks"] = d  #{}
+		dFinal["DuplicateScripts"] = dic
+	return dFinal
+		
 def procSpriteNaming(lines):
-    """Return the number of default spring"""
-    dic = {}
-    lLines = lines.split('\n')
-    number = lLines[1].split(' ')[0]
-    lObjects = lLines[2:]
-    lfinal = lObjects[:-1]
-    dic['spriteNaming'] = dic
-    dic['spriteNaming']['number'] = str(number)
-    dic['spriteNaming']['sprite'] = lfinal
-    return dic
+	"""Return the number of default spring"""
+	dic = {}
+	d = {}
+	dFinal = {}
+	i = 0
+	sec = []
+	lLines = lines.split('\n')
+	if len(lLines) > 2:
+		number = lLines[1].split(' ')[0]
+		charts = lLines[2:]
+		charts = charts[:-1]
+		dic["total"] = str(number)
+		for c in charts:
+			idDic = "character" + str(i)
+			sec.append(idDic)
+			i += 1
+		d = dict(zip(sec, charts))
+		dic["characters"] = d
+	else:
+		# no SpriteNaming
+		dic["total"] = 0
+		dic["characters"] = d
+	dFinal["SpriteNaming"] = dic
+	return dFinal
 
 
 def procDeadCode(lines):
-    """Number of dead code with characters and blocks"""
-    lLines = lines.split('\n')
-    lLines = lLines[1:]
-    lcharacter = []
-    literator = []
-    iterator = 0
-    for frame in lLines:
-        if '[kurt.Script' in frame:
-            # Found an object
-            name = frame.split("'")[1]         
-            lcharacter.append(name)
-            if iterator != 0:
-                literator.append(iterator)
-                iterator = 0
-        if 'kurt.Block' in frame:
-            iterator += 1
-    literator.append(iterator)
-
-    number = len(lcharacter)
-    dic = {}
-    dic["deadCode"] = dic  
-    dic["deadCode"]["number"] = number
-    for i in range(number):
-        dic["deadCode"][lcharacter[i]] = literator[i]
-  
-    return dic
-
+	"""Number of dead code with characters and blocks"""
+	lLines = lines.split('\n')
+	lLines = lLines[1:]
+	iterator = 0
+	dItem = {}
+	dic = {}
+	dFinal = {}
+	lItems = []
+	for frame in lLines:
+		if '[kurt.Script' in frame:
+			# Found an object
+			name = frame.split("'")[1]
+			#lcharacter.append(name)
+			dItem["character"] = name
+		if 'kurt.Block' in frame:
+		    iterator += 1
+		if 'pos=' in frame:
+			dItem["blocks"] = iterator
+			iterator = 0
+			aux = frame.split('=')[1]
+			dItem["posx"] = (aux.split(',')[0]).split('(')[1]
+			dItem["posy"] = (aux.split(',')[1]).split(')')[0]
+			lItems.append(dItem.copy())
+	dic["total"] = len(lItems)
+	dic["deadBlocks"] = lItems
+	dFinal["DeadCode"] = dic
+	return dFinal
 
 def procInitialization(lines):
-    """Initialization"""
-    dic = {}
-    lLines = lines.split('.sb2')
-    d = ast.literal_eval(lLines[1])
-    keys = d.keys()
-    values = d.values()
-    items = d.items()
-    number = 0
-    
-    for keys, values in items:
-        list = []
-        attribute = ""
-        internalkeys = values.keys()
-        internalvalues = values.values()
-        internalitems = values.items()
-        flag = False
-        counterFlag = False
-        i = 0
-        for internalkeys, internalvalues in internalitems:
-            if internalvalues == 1:
-                counterFlag = True
-                for value in list:
-                    if internalvalues == value:
-                        flag = True
-                if not flag:
-                    list.append(internalkeys)
-                    if len(list) < 2:
-                        attribute = str(internalkeys)
-                    else:
-                        attribute = attribute + ", " + str(internalkeys)
-        if counterFlag:
-            number = number + 1
-        d[keys] = attribute
-        
-    dic["initialization"] = d
-    dic["initialization"]["number"] = number
-
-    return dic
+	"""Processor Initialization plugin"""
+	dic = {}
+	lLines = lines.split('.sb2')
+	d = ast.literal_eval(lLines[1])
+	dFinal = {}
+	keys = d.keys()
+	values = d.values()
+	items = d.items()
+	number = 0
+	for keys, values in items:
+		list = []
+		attribute = ""
+		internalkeys = values.keys()
+		internalvalues = values.values()
+		internalitems = values.items()
+		flag = False
+		counterFlag = False
+		i = 0
+		for internalkeys, internalvalues in internalitems:
+		    if internalvalues == 1:
+		        counterFlag = True
+		        for value in list:
+		            if internalvalues == value:
+		                flag = True
+		        if not flag:
+		            list.append(internalkeys)
+		            if len(list) < 2:
+		                attribute = str(internalkeys)
+		            else:
+		                attribute = attribute + ", " + str(internalkeys)
+		if counterFlag:
+		    number = number + 1
+		d[keys] = attribute
+	
+	for k, v in d.items():
+		if v == '':
+			# delete key from dict
+			del(d[k])
+	dic["total"] = number
+	dic["characters"] = d
+	dFinal["Initialization"] = d
+	return dFinal
 
 # ___________________ PROCESSORS OF PLUG-INS NOT USED YET ___________________#
 
